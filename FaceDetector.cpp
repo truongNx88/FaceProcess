@@ -98,66 +98,7 @@ Status FaceDetector::readTensorFromMat(const cv::Mat &mat, tensorflow::Tensor& t
     return Status::OK();
 }
 
-std::vector<cv::Rect> FaceDetector::NMS(std::vector<cv::Rect> box, std::vector<float> scores, double threshold) {
-    size_t count = box.size();
-    std::vector<std::pair<size_t, float>> order(count);
-    for (size_t i = 0; i < count; ++i) {
-        order[i].first = i;
-        order[i].second = scores[i];
-        // std::cout << "Score: " <<scores[i] << std::endl;
-    }
-
-    sort(order.begin(), order.end(), [](const std::pair<int, float> &ls, const std::pair<int, float> &rs) {
-        std::cout << ls.second << ", " << rs.second << " : " << (ls.second > rs.second)  << std::endl;
-        return ls.second > rs.second;
-    });
-
-    std::vector<int> keep;
-    std::vector<bool> exist_box(count, true);
-    for (size_t _i = 0; _i < count; ++_i) {
-        size_t i = order[_i].first;
-        // std::cout << "i: " << i << std::endl;
-
-        float x1, y1, x2, y2, w, h, iarea, jarea, inter, ovr;
-        if (!exist_box[i]) {
-            continue;
-        }        
-        keep.push_back(i);
-        for (size_t _j = _i + 1; _j < count; ++_j) {
-            size_t j = order[_j].first;
-            if (!exist_box[j]) {
-                continue;
-            }
-            x1 = std::max(box[i].tl().x, box[j].tl().x);
-            y1 = std::max(box[i].tl().y, box[j].tl().y);
-            x2 = std::min(box[i].br().x, box[j].tl().x);
-            y2 = std::min(box[i].br().y, box[j].br().y);
-            w = std::max(float(0.0), x2 - x1 + 1);
-            h = std::max(float(0.0), y2 - y1 + 1);
-            iarea = (box[i].br().x - box[i].tl().x + 1) * (box[i].br().y - box[i].tl().y + 1);
-            jarea = (box[j].br().x - box[j].tl().x + 1) * (box[j].br().y - box[j].tl().y + 1);
-            // iarea = box[i].area();
-            // jarea = box[j].area();
-            inter = w * h;
-            // ovr = inter / (iarea + jarea - inter);
-            ovr = inter / (iarea < jarea ? iarea : jarea);
-            // std::cout << "ovr: " << ovr << std::endl;
-            if (ovr >= threshold) {
-                exist_box[j] = false;
-            }
-        }
-    }
-
-    std::vector<cv::Rect> result;
-    result.reserve(keep.size());
-    for (size_t i = 0; i < keep.size(); ++i) {
-        result.push_back(box[keep[i]]);
-    }
-
-    return result;
-}
-
-bool FaceDetector::detector(cv::Mat frame, std::vector<cv::Rect>& boxes) {
+bool FaceDetector::detector(cv::Mat frame, std::vector<cv::Rect>& boxes, std::vector<std::vector<cv::Point>>& landmarks) {
     this->shapeInput = tensorflow::TensorShape();
     this->shapeInput.AddDim(frame.rows);
     this->shapeInput.AddDim(frame.cols);
@@ -183,11 +124,9 @@ bool FaceDetector::detector(cv::Mat frame, std::vector<cv::Rect>& boxes) {
     }
     double thresholdIOU = 0.9999;
     tensorflow::TTypes<float>::Flat probs = outputs[0].flat<float>();
-    tensorflow::TTypes<float>::Flat landmarks = outputs[1].flat<float>();
+    tensorflow::TTypes<float>::Flat landmarksTs = outputs[1].flat<float>();
     tensorflow::TTypes<float>::Flat boxesTs = outputs[2].flat<float>();
-
-    std::vector<cv::Rect> nmsBoxes;
-    std::vector<float> scores;
+    std::vector<cv::Point> landmark;
     for (size_t i = 0; i < probs.size(); i++) {
         if (probs(i) > thresholdIOU) {
             int x_tl = (int) (boxesTs(4*i + 1) );
@@ -195,11 +134,15 @@ bool FaceDetector::detector(cv::Mat frame, std::vector<cv::Rect>& boxes) {
             int x_br = (int) (boxesTs(4*i + 3));
             int y_br = (int) (boxesTs(4*i + 2));
             cv::Rect box = cv::Rect(cv::Point(x_tl, y_tl), cv::Point(x_br, y_br));
-            scores.push_back(probs(i));
+            landmark.push_back(cv::Point( (int) landmarksTs(4*(i+1)), (int) landmarksTs(4*i)));
+            landmark.push_back(cv::Point( (int) landmarksTs(4*(i+1) + 1), (int) landmarksTs(4*i + 1)));
+            landmark.push_back(cv::Point( (int) landmarksTs(4*(i+1) + 2) , (int) landmarksTs(4*i + 2)));
+            landmark.push_back(cv::Point( (int) landmarksTs(4*(i+1) + 3) , (int) landmarksTs(4*i + 3)));
+
             // std::cout << probs(i) << std::endl;
             boxes.push_back(box);
+            landmarks.push_back(landmark);
         }        
     }
-    // boxes = NMS(nmsBoxes, scores,0.1);
     return true;
 }

@@ -44,7 +44,6 @@ private:
     std::vector<Tensor> inputs;
     Status loadGraph(const string &graph_file_name);
     Status readTensorFromMat(const cv::Mat &mat, tensorflow::Tensor& tensor);
-    std::vector<cv::Rect> NMS(std::vector<cv::Rect> box, std::vector<float> scores,double threshold);
 
     std::vector<std::string> inputLayer;
     std::vector<std::string> outputLayer;
@@ -52,7 +51,7 @@ private:
 public:
     FaceDetector();
     ~FaceDetector();
-    virtual bool detector(cv::Mat frame, std::vector<cv::Rect>& boxes);
+    virtual bool detector(cv::Mat frame, std::vector<cv::Rect>& boxes, std::vector<std::vector<cv::Point>>& landmarks);
 };
 
 #endif
