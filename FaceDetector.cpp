@@ -34,14 +34,11 @@ bool FaceDetector::init() {
     }
 
     //setting frame shape
-    this->shapeThresholds = tensorflow::TensorShape();
-    this->shapeThresholds.AddDim(3);
-
     this->inputs.push_back(Tensor(tensorflow::DT_FLOAT, this->shapeInput));
     
     this->inputs.push_back(Tensor(tensorflow::DT_FLOAT, tensorflow::TensorShape({})));
     
-    this->inputs.push_back(Tensor(tensorflow::DT_FLOAT, this->shapeThresholds));
+    this->inputs.push_back(Tensor(tensorflow::DT_FLOAT, tensorflow::TensorShape({3})));
     
     this->inputs.push_back(Tensor(tensorflow::DT_FLOAT, tensorflow::TensorShape({})));
 
@@ -101,15 +98,17 @@ Status FaceDetector::readTensorFromMat(const cv::Mat &mat, tensorflow::Tensor& t
     return Status::OK();
 }
 
-std::vector<cv::Rect> FaceDetector::NMS(std::vector<std::vector<int>> box, double threshold) {
+std::vector<cv::Rect> FaceDetector::NMS(std::vector<cv::Rect> box, std::vector<float> scores, double threshold) {
     size_t count = box.size();
     std::vector<std::pair<size_t, float>> order(count);
     for (size_t i = 0; i < count; ++i) {
         order[i].first = i;
-        order[i].second = box[i][4];
+        order[i].second = scores[i];
+        // std::cout << "Score: " <<scores[i] << std::endl;
     }
 
     sort(order.begin(), order.end(), [](const std::pair<int, float> &ls, const std::pair<int, float> &rs) {
+        std::cout << ls.second << ", " << rs.second << " : " << (ls.second > rs.second)  << std::endl;
         return ls.second > rs.second;
     });
 
@@ -117,35 +116,42 @@ std::vector<cv::Rect> FaceDetector::NMS(std::vector<std::vector<int>> box, doubl
     std::vector<bool> exist_box(count, true);
     for (size_t _i = 0; _i < count; ++_i) {
         size_t i = order[_i].first;
+        // std::cout << "i: " << i << std::endl;
+
         float x1, y1, x2, y2, w, h, iarea, jarea, inter, ovr;
-        if (!exist_box[i]) continue;
+        if (!exist_box[i]) {
+            continue;
+        }        
         keep.push_back(i);
         for (size_t _j = _i + 1; _j < count; ++_j) {
             size_t j = order[_j].first;
-            if (!exist_box[j]) continue;
-            x1 = std::max(box[i][0], box[j][0]);
-            y1 = std::max(box[i][1], box[j][1]);
-            x2 = std::min(box[i][2], box[j][2]);
-            y2 = std::min(box[i][3], box[j][3]);
+            if (!exist_box[j]) {
+                continue;
+            }
+            x1 = std::max(box[i].tl().x, box[j].tl().x);
+            y1 = std::max(box[i].tl().y, box[j].tl().y);
+            x2 = std::min(box[i].br().x, box[j].tl().x);
+            y2 = std::min(box[i].br().y, box[j].br().y);
             w = std::max(float(0.0), x2 - x1 + 1);
             h = std::max(float(0.0), y2 - y1 + 1);
-            iarea = (box[i][2] - box[i][0] + 1) * (box[i][3] - box[i][1] + 1);
-            jarea = (box[j][2] - box[j][0] + 1) * (box[j][3] - box[j][1] + 1);
+            iarea = (box[i].br().x - box[i].tl().x + 1) * (box[i].br().y - box[i].tl().y + 1);
+            jarea = (box[j].br().x - box[j].tl().x + 1) * (box[j].br().y - box[j].tl().y + 1);
+            // iarea = box[i].area();
+            // jarea = box[j].area();
             inter = w * h;
-            ovr = inter / (iarea + jarea - inter);
-            if (ovr >= threshold) exist_box[j] = false;
+            // ovr = inter / (iarea + jarea - inter);
+            ovr = inter / (iarea < jarea ? iarea : jarea);
+            // std::cout << "ovr: " << ovr << std::endl;
+            if (ovr >= threshold) {
+                exist_box[j] = false;
+            }
         }
     }
 
     std::vector<cv::Rect> result;
     result.reserve(keep.size());
     for (size_t i = 0; i < keep.size(); ++i) {
-        int x1 = box[keep[i]].at(0);
-        int y1 = box[keep[i]].at(1);
-        int x2 = box[keep[i]].at(2);
-        int y2 = box[keep[i]].at(3);
-        cv::Rect NMSbox = cv::Rect(cv::Point(x1, y1), cv::Point(x2, y2));
-        result.push_back(NMSbox);
+        result.push_back(box[keep[i]]);
     }
 
     return result;
@@ -175,34 +181,25 @@ bool FaceDetector::detector(cv::Mat frame, std::vector<cv::Rect>& boxes) {
         LOG(ERROR) << "Running model failed: " << runStatus;
         return false;
     }
-    int thresholdIOU = 0.709;
+    double thresholdIOU = 0.9999;
     tensorflow::TTypes<float>::Flat probs = outputs[0].flat<float>();
     tensorflow::TTypes<float>::Flat landmarks = outputs[1].flat<float>();
     tensorflow::TTypes<float>::Flat boxesTs = outputs[2].flat<float>();
-    std::vector<std::vector<int>> totalBox;
+
+    std::vector<cv::Rect> nmsBoxes;
+    std::vector<float> scores;
     for (size_t i = 0; i < probs.size(); i++) {
         if (probs(i) > thresholdIOU) {
-            std::vector<int> boxNMS;
-            boxNMS.push_back((int) (boxesTs(4*i + 1))); 
-            boxNMS.push_back((int) (boxesTs(4*i)));
-            boxNMS.push_back((int) (boxesTs(4*i + 3)));
-            boxNMS.push_back((int) (boxesTs(4*i + 2)));
-            totalBox.push_back(boxNMS);
-        }
+            int x_tl = (int) (boxesTs(4*i + 1) );
+            int y_tl = (int) (boxesTs(4*i));
+            int x_br = (int) (boxesTs(4*i + 3));
+            int y_br = (int) (boxesTs(4*i + 2));
+            cv::Rect box = cv::Rect(cv::Point(x_tl, y_tl), cv::Point(x_br, y_br));
+            scores.push_back(probs(i));
+            // std::cout << probs(i) << std::endl;
+            boxes.push_back(box);
+        }        
     }
-    
-    boxes = NMS(totalBox, 0.2);
-
-    // std::vector<int> goodIdxs = NMS(probs, boxesTs, thresholdIOU);
-    // for (size_t i = 0; i < goodIdxs.size(); i++) {
-    //     int x_tl = (int) (boxesTs(4*goodIdxs.at(i) + 1) * frame.cols);
-    //     int y_tl = (int) (boxesTs(4*goodIdxs.at(i)) * frame.rows);
-
-    //     int x_br = (int) (boxesTs(4*goodIdxs.at(i) + 3) * frame.cols);
-    //     int y_br = (int) (boxesTs(4*goodIdxs.at(i) + 2) * frame.rows);
-
-    //     cv::Rect box = cv::Rect(cv::Point(x_tl, y_tl), cv::Point(x_br, y_br));
-    //     boxes.push_back(box);   
-    // }
+    // boxes = NMS(nmsBoxes, scores,0.1);
     return true;
 }

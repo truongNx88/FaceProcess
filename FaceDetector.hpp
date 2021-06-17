@@ -40,14 +40,11 @@ private:
     bool init();
     std::unique_ptr<tensorflow::Session> session;
     tensorflow::TensorShape shapeInput;
-    // tensorflow::TensorShape shapeMinSze;
-    tensorflow::TensorShape shapeThresholds;
-    // tensorflow::TensorShape shapeFactor;
 
     std::vector<Tensor> inputs;
     Status loadGraph(const string &graph_file_name);
     Status readTensorFromMat(const cv::Mat &mat, tensorflow::Tensor& tensor);
-    std::vector<cv::Rect> NMS(std::vector<std::vector<int>> box, double threshold);
+    std::vector<cv::Rect> NMS(std::vector<cv::Rect> box, std::vector<float> scores,double threshold);
 
     std::vector<std::string> inputLayer;
     std::vector<std::string> outputLayer;
