@@ -134,12 +134,12 @@ bool FaceDetector::detector(cv::Mat frame, std::vector<cv::Rect>& boxes, std::ve
             int x_br = (int) (boxesTs(4*i + 3));
             int y_br = (int) (boxesTs(4*i + 2));
             cv::Rect box = cv::Rect(cv::Point(x_tl, y_tl), cv::Point(x_br, y_br));
-            landmark.push_back(cv::Point( (int) landmarksTs(4*(i+1)), (int) landmarksTs(4*i)));
-            landmark.push_back(cv::Point( (int) landmarksTs(4*(i+1) + 1), (int) landmarksTs(4*i + 1)));
-            landmark.push_back(cv::Point( (int) landmarksTs(4*(i+1) + 2) , (int) landmarksTs(4*i + 2)));
-            landmark.push_back(cv::Point( (int) landmarksTs(4*(i+1) + 3) , (int) landmarksTs(4*i + 3)));
+            landmark.push_back(cv::Point( (int) landmarksTs(10*i + 5), (int) landmarksTs(10*i)));
+            landmark.push_back(cv::Point( (int) landmarksTs(10*i + 6),  (int) landmarksTs(10*i + 1)));
+            landmark.push_back(cv::Point( (int) landmarksTs(10*i + 7) , (int) landmarksTs(10*i + 2)));
+            landmark.push_back(cv::Point( (int) landmarksTs(10*i + 8) , (int) landmarksTs(10*i + 3)));
+            landmark.push_back(cv::Point( (int) landmarksTs(10*i + 9) , (int) landmarksTs(10*i + 4)));
 
-            // std::cout << probs(i) << std::endl;
             boxes.push_back(box);
             landmarks.push_back(landmark);
         }        
