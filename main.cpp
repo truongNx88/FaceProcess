@@ -1,9 +1,11 @@
 
 #include "FaceDetector.hpp"
+#include "FaceRecognitor.hpp"
 
 
 int main(int argc, char const *argv[]) {
     FaceDetector* detector = new FaceDetector();
+    FaceRecognitor* recognitor = new FaceRecognitor();
     // cv::VideoCapture cap;
     // cap.open(0);
 
@@ -15,7 +17,7 @@ int main(int argc, char const *argv[]) {
     // }
     
 
-    cv::Mat frame = cv::imread("../test_image.png");
+    cv::Mat frame = cv::imread("../test.jpg");
     // cv::Mat frame;
     // while (1) {
         // cap.read(frame);
@@ -23,11 +25,15 @@ int main(int argc, char const *argv[]) {
         std::vector<std::vector<cv::Point>> landmarks;
         if (detector->detector(frame, boxes, landmarks)) {
             if (boxes.size() > 0) {
+                std::vector<cv::Mat> faces;
                 for (int i = 0; i < boxes.size(); i++) {
-                    cv::rectangle(frame, boxes[i], cv::Scalar(0, 255, 255), 1);
-                    for (auto landmark : landmarks[i]) {
-                        cv::circle( frame, landmark, 0.1, cv::Scalar( 255, 0, 0 ), 3 );
-                    }
+                    // cv::rectangle(frame, boxes[i], cv::Scalar(0, 255, 255), 3);
+                    // for (auto landmark : landmarks[i]) {
+                    //     cv::circle( frame, landmark, 0.1, cv::Scalar( 255, 0, 0 ), 3 );
+                    // }
+                    std::vector<float> embeddings;
+                    cv::Mat face = frame(boxes[i]);
+                    recognitor->recognize(face, landmarks[i], embeddings);
                 }  
             }
         }
