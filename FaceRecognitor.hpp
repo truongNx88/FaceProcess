@@ -42,6 +42,7 @@ private:
     Tensor imgTensor;
     std::vector<Tensor> dropoutTensors;
     std::vector<std::string> inputLayers;
+    // std::string inputLayers;
     std::vector<std::string> outputLayers;
     int m_width;
     int m_height;

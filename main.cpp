@@ -27,10 +27,10 @@ int main(int argc, char const *argv[]) {
             if (boxes.size() > 0) {
                 std::vector<cv::Mat> faces;
                 for (int i = 0; i < boxes.size(); i++) {
-                    // cv::rectangle(frame, boxes[i], cv::Scalar(0, 255, 255), 3);
-                    // for (auto landmark : landmarks[i]) {
-                    //     cv::circle( frame, landmark, 0.1, cv::Scalar( 255, 0, 0 ), 3 );
-                    // }
+                    cv::rectangle(frame, boxes[i], cv::Scalar(0, 255, 255), 3);
+                    for (auto landmark : landmarks[i]) {
+                        cv::circle( frame, landmark, 0.1, cv::Scalar( 255, 0, 0 ), 3 );
+                    }
                     std::vector<float> embeddings;
                     cv::Mat face = frame(boxes[i]);
                     recognitor->recognize(face, landmarks[i], embeddings);

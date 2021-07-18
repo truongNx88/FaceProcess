@@ -65,10 +65,13 @@ bool FaceRecognitor::init () {
     // Set dirs variables   
     std::string ROOTDIR = "../";
     std::string GRAPH = "model/insightface.pb";
+    // std::string GRAPH = "model/resnet-v2-50.pb";
 
     // Set input & output nodes names
     this->inputLayers = {"img_inputs:0", "dropout_rate:0"};
-    this->outputLayers = {"E_BN2/Identity:0"};
+    // this->inputLayers = "input:0";
+    // this->outputLayers = {"resnet_v2_50/predictions/Reshape_1:0"};
+    this->outputLayers = {"resnet_v1_50/E_BN2/Identity:0"};
 
     std::string graphPath = tensorflow::io::JoinPath(ROOTDIR, GRAPH);
     Status loadGraphStatus = loadGraph(graphPath);
@@ -80,9 +83,17 @@ bool FaceRecognitor::init () {
         LOG(INFO) << "loadGraph(): frozen graph loaded" << std::endl;
     }
 
-    this->dropoutTensors.push_back(Tensor(tensorflow::DT_FLOAT));
-    this->dropoutTensors.push_back(Tensor(tensorflow::DT_FLOAT));
+    // tensorflow::TensorShape dropoutShape = tensorflow::TensorShape();
+    // dropoutShape.AddDim(1);
+    // dropoutShape.AddDim(7);
+    // dropoutShape.AddDim(7);
+    // dropoutShape.AddDim(512);
 
+    this->dropoutTensors.push_back(Tensor(tensorflow::DT_FLOAT, tensorflow::TensorShape({})));
+    this->dropoutTensors.push_back(Tensor(tensorflow::DT_FLOAT, tensorflow::TensorShape({})));
+
+    this->dropoutTensors[0].flat<float>()(0) = 0.5;
+    this->dropoutTensors[1].flat<float>()(0) = 0.5;
     return true;
 }
 
@@ -214,37 +225,40 @@ void FaceRecognitor::getAffineMatrix(float* src_5pts, const float* dst_5pts, flo
 }
 
 bool FaceRecognitor::recognize(cv::Mat frame, std::vector<cv::Point> landmarks, std::vector<float>& embeddings) {
+    cv::Mat aligned;
+    align(frame, landmarks, aligned);
+    // cv::resize(frame, frame, cv::Size(112, 112));
     this->shapeImg = tensorflow::TensorShape();
     this->shapeImg.AddDim(1);
     this->shapeImg.AddDim(112);
     this->shapeImg.AddDim(112);
     this->shapeImg.AddDim(3);
-
-    // tensorflow::TensorShape dropOutShape = tensorflow::TensorShape(Tensor());
-    // dropOutShape.AddDim();
-    // dropOutShape.AddDim(Tensor());
     this->imgTensor = Tensor(tensorflow::DT_FLOAT, this->shapeImg);
-    cv::Mat aligned;
-    align(frame, landmarks, aligned);
     Status readTensorStatus = readTensorFromMat(aligned, this->imgTensor);
+    // Status readTensorStatus = readTensorFromMat(frame, this->imgTensor);
     if (!readTensorStatus.ok()) {
         LOG(ERROR) << "Mat->Tensor conversion failed: " << readTensorStatus;
         return false;
     }
-    std::vector<std::pair<std::string, Tensor>> inputs;
-    const Tensor& dropoutTensor = this->dropoutTensors[0] ;
-    inputs.push_back(std::make_pair(this->inputLayers[0], this->imgTensor));
-    inputs.push_back(std::make_pair(this->inputLayers[1], dropoutTensor));
-    // for (size_t i = 0; i < this->inputTensors.size(); i++) {
-    //     inputs.push_back(std::make_pair(this->inputLayers[i], this->inputTensors[i]));
-    // }
-
 
     std::vector<Tensor> outputs;
-    Status runStatus = this->session->Run(inputs, this->outputLayers, {}, &outputs);
+    std::vector<std::pair<std::string, Tensor>> tensorInputs;
+
+    Tensor& dropoutPointer = dropoutTensors[0];
+
+    tensorInputs.push_back(std::make_pair(this->inputLayers[0], this->imgTensor));
+    tensorInputs.push_back(std::make_pair(this->inputLayers[1], dropoutPointer));
+    // Status runStatus = this->session->Run({{this->inputLayers, this->imgTensor}}, this->outputLayers, {}, &outputs);
+    Status runStatus = this->session->Run(tensorInputs , this->outputLayers, {}, &outputs);
     if (!runStatus.ok()) {
         LOG(ERROR) << "Running model failed: " << runStatus;
         return false;
     }
+    tensorflow::TTypes<float>::Flat embeddingsTs = outputs[0].flat<float>();
+    for (size_t i = 0; i < embeddingsTs.size(); i++) {
+        std::cout << embeddingsTs(i) << " ";
+    }
+    std::cout << std::endl;
+    
     return true;
 }
